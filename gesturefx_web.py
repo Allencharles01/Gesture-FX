@@ -76,28 +76,40 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False},
 )
 
-# --- 6. THE LIVE TRIGGER (Instant Deployment) ---
-status_placeholder = st.empty()
-if ctx.state.playing:
-    while True:
-        try:
-            result = st.session_state.result_queue.get_nowait()
-            if result == "thumb": st.balloons()
-            elif result == "peace": st.snow()
-            elif result == "fist": 
-                st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
-            elif result == "palm": 
-                st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
-        except queue.Empty:
-            time.sleep(0.1)
-            # Break the loop if camera stops so the page can finish loading
-            if not ctx.state.playing:
-                break
+# --- 6. Start Camera ---
+ctx = webrtc_streamer(
+    key="gesture-fx",
+    video_frame_callback=video_frame_callback,
+    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    media_stream_constraints={"video": True, "audio": False},
+)
 
-# --- 7. Sidebar Spellbook ---
+# --- 7. THE INSTANT TRIGGER (No more while loop!) ---
+# We check the mailbox once. If it's empty, we do nothing.
+# If something is there, we fire the effect and force a rerun.
+try:
+    result = st.session_state.result_queue.get_nowait()
+    if result == "thumb": st.balloons()
+    elif result == "peace": st.snow()
+    elif result == "fist": 
+        st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
+    elif result == "palm": 
+        st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
+    
+    # This triggers the effect immediately and resets the UI
+    st.rerun()
+except queue.Empty:
+    # This is the "secret sauce": if the camera is playing, 
+    # we tell Streamlit to check again in 100ms without blocking.
+    if ctx.state.playing:
+        time.sleep(0.1)
+        st.rerun()
+
+# --- 8. Sidebar Spellbook ---
 with st.sidebar:
     st.header("📖 Spellbook")
     st.write("👍 **Thumb (2s)**: Balloons")
     st.write("✌️ **Peace (2s)**: Snow")
     st.write("✊ **Fist (2s)**: Dark Mode")
     st.write("✋ **Palm (2s)**: Light Mode")
+    st.info("Check it out: [allencharles.dev](https://allencharles.dev)")
