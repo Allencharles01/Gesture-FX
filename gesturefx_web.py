@@ -12,6 +12,7 @@ st.title("🖐️ Hand Triggered Effects")
 st.caption("Developed by **Allen Charles** | [allencharles.dev](https://allencharles.dev)")
 
 # --- 2. The Communication Bridge ---
+# We use session_state to ensure the queue and timer persist correctly
 if "result_queue" not in st.session_state:
     st.session_state.result_queue = queue.Queue()
 
@@ -20,12 +21,9 @@ mp_hands = mp.solutions.hands
 detector = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mp_draw = mp.solutions.drawing_utils
 
-class Tracker:
-    last_gesture = None
-    start_time = 0
-    done = False
-
-gesture_tracker = Tracker()
+# Use session state for the tracker so it doesn't reset on every rerun
+if "tracker" not in st.session_state:
+    st.session_state.tracker = {"last": None, "start": 0, "done": False}
 
 # --- 4. Video Engine (Timer & Drawing Logic) ---
 def video_frame_callback(frame):
@@ -36,6 +34,7 @@ def video_frame_callback(frame):
 
     this_gesture = None
     anchor_pt = None
+    tracker = st.session_state.tracker
 
     if results.multi_hand_landmarks:
         for hand in results.multi_hand_landmarks:
@@ -43,16 +42,17 @@ def video_frame_callback(frame):
             pts = hand.landmark
             anchor_pt = (int(pts[0].x * w), int(pts[0].y * h))
             
+            # Gesture Detection
             t_tip, i_tip, m_tip, r_tip, p_tip = pts[4], pts[8], pts[12], pts[16], pts[20]
             if t_tip.y < i_tip.y and t_tip.y < m_tip.y: this_gesture = "thumb"
             elif i_tip.y < pts[6].y and m_tip.y < pts[10].y: this_gesture = "peace"
             elif i_tip.y > pts[5].y and m_tip.y > pts[9].y: this_gesture = "fist"
             elif i_tip.y < pts[5].y and m_tip.y < pts[9].y: this_gesture = "palm"
 
-    # Timer Logic + Drawing Progress Ring on wrist
-    if this_gesture and this_gesture == gesture_tracker.last_gesture:
-        if not gesture_tracker.done:
-            diff = time.time() - gesture_tracker.start_time
+    # Timer Logic + Drawing Progress Ring
+    if this_gesture and this_gesture == tracker["last"]:
+        if not tracker["done"]:
+            diff = time.time() - tracker["start"]
             if anchor_pt:
                 progress = min(1.0, diff / 2.0)
                 cv2.circle(img, anchor_pt, 45, (100, 100, 100), 1)
@@ -60,39 +60,41 @@ def video_frame_callback(frame):
             
             if diff >= 2.0:
                 st.session_state.result_queue.put(this_gesture)
-                gesture_tracker.done = True
+                tracker["done"] = True
     else:
-        gesture_tracker.last_gesture = this_gesture
-        gesture_tracker.start_time = time.time()
-        gesture_tracker.done = False
+        tracker["last"] = this_gesture
+        tracker["start"] = time.time()
+        tracker["done"] = False
 
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-# --- 5. Start Camera (Fixed & Contained) ---
-camera_placeholder = st.container()
-with camera_placeholder:
-    ctx = webrtc_streamer(
-        key="gesture-fx-stable", 
-        video_frame_callback=video_frame_callback,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True,
-    )
+# --- 5. Start Camera (Contained) ---
+# Using a single, unique key to prevent DuplicateElementKey errors
+ctx = webrtc_streamer(
+    key="gesture-fx-final-v1", 
+    video_frame_callback=video_frame_callback,
+    rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
+)
 
-# --- 6. THE "HEARTBEAT" (Forces the UI to check for effects) ---
+# --- 6. The UI Trigger (Main Thread) ---
+# We check the queue once. If an effect is found, we fire it.
+try:
+    triggered = st.session_state.result_queue.get_nowait()
+    if triggered == "thumb": st.balloons()
+    elif triggered == "peace": st.snow()
+    elif triggered == "fist": 
+        st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
+    elif triggered == "palm": 
+        st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
+except queue.Empty:
+    pass
+
+# Small button to manually refresh if the user feels stuck, 
+# preventing the "infinite loading" loop.
 if ctx.state.playing:
-    try:
-        triggered = st.session_state.result_queue.get_nowait()
-        if triggered:
-            if triggered == "thumb": st.balloons()
-            elif triggered == "peace": st.snow()
-            elif triggered == "fist": 
-                st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
-            elif triggered == "palm": 
-                st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
-            st.rerun() 
-    except queue.Empty:
-        time.sleep(0.1)
+    if st.button("Refresh Effects"):
         st.rerun()
 
 # --- 7. Sidebar Spellbook ---
