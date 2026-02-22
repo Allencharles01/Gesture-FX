@@ -12,7 +12,6 @@ st.title("🖐️ Hand Triggered Effects")
 st.caption("Developed by **Allen Charles** | [allencharles.dev](https://allencharles.dev)")
 
 # --- 2. The Communication Bridge ---
-# Using a shared queue to pass messages from camera to UI
 if "result_queue" not in st.session_state:
     st.session_state.result_queue = queue.Queue()
 
@@ -21,7 +20,6 @@ mp_hands = mp.solutions.hands
 detector = mp_hands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mp_draw = mp.solutions.drawing_utils
 
-# Internal timer state
 class Tracker:
     last_gesture = None
     start_time = 0
@@ -29,7 +27,7 @@ class Tracker:
 
 gesture_tracker = Tracker()
 
-# --- 4. Video Engine (Drawing & Logic) ---
+# --- 4. Video Engine (Timer & Drawing Logic) ---
 def video_frame_callback(frame):
     img = frame.to_ndarray(format="bgr24")
     img = cv2.flip(img, 1)
@@ -51,7 +49,7 @@ def video_frame_callback(frame):
             elif i_tip.y > pts[5].y and m_tip.y > pts[9].y: this_gesture = "fist"
             elif i_tip.y < pts[5].y and m_tip.y < pts[9].y: this_gesture = "palm"
 
-    # Timer Logic + Drawing Progress Ring
+    # Timer Logic + Drawing Progress Ring on wrist
     if this_gesture and this_gesture == gesture_tracker.last_gesture:
         if not gesture_tracker.done:
             diff = time.time() - gesture_tracker.start_time
@@ -78,24 +76,25 @@ ctx = webrtc_streamer(
     media_stream_constraints={"video": True, "audio": False},
 )
 
-# --- 6. THE "LIVE LISTENER" ---
-# This loop forces Streamlit to check the queue constantly while the camera is on
+# --- 6. THE LIVE TRIGGER (Instant Deployment) ---
 status_placeholder = st.empty()
+if ctx.state.playing:
+    while True:
+        try:
+            result = st.session_state.result_queue.get_nowait()
+            if result == "thumb": st.balloons()
+            elif result == "peace": st.snow()
+            elif result == "fist": 
+                st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
+            elif result == "palm": 
+                st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
+        except queue.Empty:
+            time.sleep(0.1)
+            # Break the loop if camera stops so the page can finish loading
+            if not ctx.state.playing:
+                break
 
-while ctx.state.playing:
-    try:
-        result = st.session_state.result_queue.get_nowait()
-        if result == "thumb": st.balloons()
-        elif result == "peace": st.snow()
-        elif result == "fist": 
-            st.markdown("<style>.stApp { background-color: #1e1e1e; color: white; transition: 0.5s; }</style>", unsafe_allow_html=True)
-        elif result == "palm": 
-            st.markdown("<style>.stApp { background-color: white; color: black; transition: 0.5s; }</style>", unsafe_allow_html=True)
-    except queue.Empty:
-        time.sleep(0.1) # Check 10 times per second
-        continue
-
-# --- 7. Sidebar ---
+# --- 7. Sidebar Spellbook ---
 with st.sidebar:
     st.header("📖 Spellbook")
     st.write("👍 **Thumb (2s)**: Balloons")
