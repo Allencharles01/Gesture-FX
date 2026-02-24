@@ -11,7 +11,6 @@ st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
-# Store active effect safely
 if "active_effect" not in st.session_state:
     st.session_state.active_effect = None
 
@@ -29,6 +28,7 @@ class GestureProcessor(VideoProcessorBase):
         self.last = None
         self.start = 0
         self.done = False
+        self.trigger = None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -79,9 +79,7 @@ class GestureProcessor(VideoProcessorBase):
                     )
 
                 if diff >= HOLD_DELAY:
-                    # Only set session_state once (SAFE)
-                    if this_gesture:
-                        st.session_state.active_effect = this_gesture
+                    self.trigger = this_gesture
                     self.done = True
         else:
             self.last = this_gesture
@@ -98,7 +96,17 @@ ctx = webrtc_streamer(
     async_processing=True,
 )
 
-# -------- EFFECT RENDERING (MAIN THREAD ONLY) -------- #
+# -------- Main Thread Trigger Handling -------- #
+
+if ctx.video_processor:
+    processor = ctx.video_processor
+
+    if processor.trigger:
+        st.session_state.active_effect = processor.trigger
+        processor.trigger = None
+
+
+# -------- Render Effects -------- #
 
 effect = st.session_state.active_effect
 
