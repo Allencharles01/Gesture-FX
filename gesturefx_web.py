@@ -11,6 +11,10 @@ st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
+# Store active effect safely
+if "active_effect" not in st.session_state:
+    st.session_state.active_effect = None
+
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
@@ -25,7 +29,6 @@ class GestureProcessor(VideoProcessorBase):
         self.last = None
         self.start = 0
         self.done = False
-        self.trigger = None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -56,7 +59,7 @@ class GestureProcessor(VideoProcessorBase):
                 elif i.y < pts[5].y and m.y < pts[9].y:
                     this_gesture = "palm"
 
-        # -------- Timer Logic -------- #
+        # Timer logic
         if this_gesture and this_gesture == self.last:
             if not self.done:
                 diff = time.time() - self.start
@@ -76,7 +79,9 @@ class GestureProcessor(VideoProcessorBase):
                     )
 
                 if diff >= HOLD_DELAY:
-                    self.trigger = this_gesture
+                    # Only set session_state once (SAFE)
+                    if this_gesture:
+                        st.session_state.active_effect = this_gesture
                     self.done = True
         else:
             self.last = this_gesture
@@ -93,31 +98,27 @@ ctx = webrtc_streamer(
     async_processing=True,
 )
 
-# ---------- Trigger Effects in Main Thread ---------- #
-if ctx.video_processor:
-    processor = ctx.video_processor
+# -------- EFFECT RENDERING (MAIN THREAD ONLY) -------- #
 
-    if processor.trigger:
-        if processor.trigger == "thumb":
-            st.balloons()
+effect = st.session_state.active_effect
 
-        elif processor.trigger == "peace":
-            st.snow()
+if effect == "thumb":
+    st.balloons()
 
-        elif processor.trigger == "fist":
-            st.markdown(
-                "<style>.stApp { background-color:#1e1e1e; color:white; }</style>",
-                unsafe_allow_html=True,
-            )
+elif effect == "peace":
+    st.snow()
 
-        elif processor.trigger == "palm":
-            st.markdown(
-                "<style>.stApp { background-color:white; color:black; }</style>",
-                unsafe_allow_html=True,
-            )
+elif effect == "fist":
+    st.markdown(
+        "<style>.stApp { background-color:#1e1e1e; color:white; }</style>",
+        unsafe_allow_html=True,
+    )
 
-        processor.trigger = None
-        st.rerun()
+elif effect == "palm":
+    st.markdown(
+        "<style>.stApp { background-color:white; color:black; }</style>",
+        unsafe_allow_html=True,
+    )
 
 
 with st.sidebar:
