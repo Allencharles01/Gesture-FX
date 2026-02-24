@@ -3,34 +3,31 @@ import cv2
 import mediapipe as mp
 import time
 import av
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
-# ---------------- UI ---------------- #
 st.set_page_config(layout="centered", page_title="Gesture FX Web")
 st.title("🖐️ Hand Triggered Effects")
 st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
-# ---------------- MediaPipe Setup ---------------- #
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 
-# ---------------- Video Processor ---------------- #
-class GestureProcessor(VideoTransformerBase):
+class GestureProcessor(VideoProcessorBase):
     def __init__(self):
         self.detector = mp_hands.Hands(
             min_detection_confidence=0.7,
             max_num_hands=1,
-            model_complexity=0  # lighter model for cloud
+            model_complexity=0,
         )
         self.last = None
         self.start = 0
         self.done = False
         self.trigger = None
 
-    def transform(self, frame):
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
@@ -86,49 +83,43 @@ class GestureProcessor(VideoTransformerBase):
             self.start = time.time()
             self.done = False
 
-        return img
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-# ---------------- Start WebRTC ---------------- #
 ctx = webrtc_streamer(
-    key="gesturefx-final",
+    key="gesturefx",
     video_processor_factory=GestureProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
 
-
-# ---------------- Trigger Effects ---------------- #
+# ---------- Trigger Effects in Main Thread ---------- #
 if ctx.video_processor:
-    trigger = ctx.video_processor.trigger
+    processor = ctx.video_processor
 
-    if trigger:
-        if trigger == "thumb":
+    if processor.trigger:
+        if processor.trigger == "thumb":
             st.balloons()
 
-        elif trigger == "peace":
+        elif processor.trigger == "peace":
             st.snow()
 
-        elif trigger == "fist":
+        elif processor.trigger == "fist":
             st.markdown(
-                "<style>.stApp { background-color: #1e1e1e; color: white; }</style>",
+                "<style>.stApp { background-color:#1e1e1e; color:white; }</style>",
                 unsafe_allow_html=True,
             )
 
-        elif trigger == "palm":
+        elif processor.trigger == "palm":
             st.markdown(
-                "<style>.stApp { background-color: white; color: black; }</style>",
+                "<style>.stApp { background-color:white; color:black; }</style>",
                 unsafe_allow_html=True,
             )
 
-        # Reset trigger
-        ctx.video_processor.trigger = None
-
-        # Force UI refresh so effects show
+        processor.trigger = None
         st.rerun()
 
 
-# ---------------- Sidebar ---------------- #
 with st.sidebar:
     st.header("📖 Spellbook")
     st.write("👍 Hold 2s → Balloons")
