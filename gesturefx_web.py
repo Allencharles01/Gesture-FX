@@ -5,20 +5,25 @@ import time
 import av
 from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 
+# ---------------- UI ---------------- #
 st.set_page_config(layout="centered", page_title="Gesture FX Web")
 st.title("🖐️ Hand Triggered Effects")
-st.caption("Developed by Allen Charles")
+st.caption("Developed by Allen Charles | allencharles.dev")
 
+HOLD_DELAY = 2.0
+
+# ---------------- MediaPipe Setup ---------------- #
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 
+# ---------------- Video Processor ---------------- #
 class GestureProcessor(VideoTransformerBase):
     def __init__(self):
         self.detector = mp_hands.Hands(
             min_detection_confidence=0.7,
             max_num_hands=1,
-            model_complexity=0  # IMPORTANT: lighter model
+            model_complexity=0  # lighter model for cloud
         )
         self.last = None
         self.start = 0
@@ -54,13 +59,13 @@ class GestureProcessor(VideoTransformerBase):
                 elif i.y < pts[5].y and m.y < pts[9].y:
                     this_gesture = "palm"
 
-        # Timer logic (INSIDE class only)
+        # -------- Timer Logic -------- #
         if this_gesture and this_gesture == self.last:
             if not self.done:
                 diff = time.time() - self.start
 
                 if anchor_pt:
-                    progress = min(1.0, diff / 2.0)
+                    progress = min(1.0, diff / HOLD_DELAY)
                     cv2.circle(img, anchor_pt, 40, (100, 100, 100), 1)
                     cv2.ellipse(
                         img,
@@ -73,7 +78,7 @@ class GestureProcessor(VideoTransformerBase):
                         3,
                     )
 
-                if diff >= 2.0:
+                if diff >= HOLD_DELAY:
                     self.trigger = this_gesture
                     self.done = True
         else:
@@ -84,35 +89,49 @@ class GestureProcessor(VideoTransformerBase):
         return img
 
 
+# ---------------- Start WebRTC ---------------- #
 ctx = webrtc_streamer(
-    key="gesturefx",
+    key="gesturefx-final",
     video_processor_factory=GestureProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
 
-# 🔥 Main thread safely reads trigger
+
+# ---------------- Trigger Effects ---------------- #
 if ctx.video_processor:
     trigger = ctx.video_processor.trigger
 
-    if trigger == "thumb":
-        st.balloons()
+    if trigger:
+        if trigger == "thumb":
+            st.balloons()
+
+        elif trigger == "peace":
+            st.snow()
+
+        elif trigger == "fist":
+            st.markdown(
+                "<style>.stApp { background-color: #1e1e1e; color: white; }</style>",
+                unsafe_allow_html=True,
+            )
+
+        elif trigger == "palm":
+            st.markdown(
+                "<style>.stApp { background-color: white; color: black; }</style>",
+                unsafe_allow_html=True,
+            )
+
+        # Reset trigger
         ctx.video_processor.trigger = None
 
-    elif trigger == "peace":
-        st.snow()
-        ctx.video_processor.trigger = None
+        # Force UI refresh so effects show
+        st.rerun()
 
-    elif trigger == "fist":
-        st.markdown(
-            "<style>.stApp { background-color: #1e1e1e; color: white; }</style>",
-            unsafe_allow_html=True,
-        )
-        ctx.video_processor.trigger = None
 
-    elif trigger == "palm":
-        st.markdown(
-            "<style>.stApp { background-color: white; color: black; }</style>",
-            unsafe_allow_html=True,
-        )
-        ctx.video_processor.trigger = None
+# ---------------- Sidebar ---------------- #
+with st.sidebar:
+    st.header("📖 Spellbook")
+    st.write("👍 Hold 2s → Balloons")
+    st.write("✌️ Hold 2s → Snow")
+    st.write("✊ Hold 2s → Dark Mode")
+    st.write("✋ Hold 2s → Light Mode")
