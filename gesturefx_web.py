@@ -3,6 +3,7 @@ import cv2
 import mediapipe as mp
 import time
 import av
+import random
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
 st.set_page_config(layout="centered", page_title="Gesture FX Web")
@@ -10,9 +11,6 @@ st.title("🖐️ Hand Triggered Effects")
 st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
-
-if "active_effect" not in st.session_state:
-    st.session_state.active_effect = None
 
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
@@ -28,7 +26,37 @@ class GestureProcessor(VideoProcessorBase):
         self.last = None
         self.start = 0
         self.done = False
-        self.trigger = None
+        self.active_effect = None
+        self.particles = []
+
+    def create_particles(self, w, h, count=50):
+        self.particles = [
+            [random.randint(0, w), random.randint(-h, 0), random.randint(2, 6)]
+            for _ in range(count)
+        ]
+
+    def draw_snow(self, img):
+        h, w, _ = img.shape
+        for p in self.particles:
+            cv2.circle(img, (p[0], p[1]), p[2], (255, 255, 255), -1)
+            p[1] += 3
+            if p[1] > h:
+                p[1] = random.randint(-20, 0)
+
+    def draw_confetti(self, img):
+        h, w, _ = img.shape
+        colors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0)]
+        for p in self.particles:
+            cv2.circle(img, (p[0], p[1]), p[2], random.choice(colors), -1)
+            p[1] += 5
+            if p[1] > h:
+                p[1] = random.randint(-20, 0)
+
+    def apply_dark_filter(self, img):
+        overlay = img.copy()
+        cv2.rectangle(overlay, (0,0), (img.shape[1], img.shape[0]), (0,0,0), -1)
+        alpha = 0.5
+        cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -79,59 +107,30 @@ class GestureProcessor(VideoProcessorBase):
                     )
 
                 if diff >= HOLD_DELAY:
-                    self.trigger = this_gesture
+                    self.active_effect = this_gesture
                     self.done = True
+                    self.create_particles(w, h)
         else:
             self.last = this_gesture
             self.start = time.time()
             self.done = False
 
+        # Apply active effect
+        if self.active_effect == "peace":
+            self.draw_snow(img)
+        elif self.active_effect == "thumb":
+            self.draw_confetti(img)
+        elif self.active_effect == "fist":
+            self.apply_dark_filter(img)
+        elif self.active_effect == "palm":
+            self.active_effect = None
+
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-ctx = webrtc_streamer(
+webrtc_streamer(
     key="gesturefx",
     video_processor_factory=GestureProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
-
-# -------- Main Thread Trigger Handling -------- #
-
-if ctx.video_processor:
-    processor = ctx.video_processor
-
-    if processor.trigger:
-        st.session_state.active_effect = processor.trigger
-        processor.trigger = None
-
-
-# -------- Render Effects -------- #
-
-effect = st.session_state.active_effect
-
-if effect == "thumb":
-    st.balloons()
-
-elif effect == "peace":
-    st.snow()
-
-elif effect == "fist":
-    st.markdown(
-        "<style>.stApp { background-color:#1e1e1e; color:white; }</style>",
-        unsafe_allow_html=True,
-    )
-
-elif effect == "palm":
-    st.markdown(
-        "<style>.stApp { background-color:white; color:black; }</style>",
-        unsafe_allow_html=True,
-    )
-
-
-with st.sidebar:
-    st.header("📖 Spellbook")
-    st.write("👍 Hold 2s → Balloons")
-    st.write("✌️ Hold 2s → Snow")
-    st.write("✊ Hold 2s → Dark Mode")
-    st.write("✋ Hold 2s → Light Mode")
