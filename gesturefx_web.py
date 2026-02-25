@@ -11,10 +11,10 @@ st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
-# ---------- Background Animation Layer ----------
+# ---------- Background Layer ----------
 st.markdown("""
 <style>
-#universe {
+#particles {
   position: fixed;
   inset: 0;
   width: 100%;
@@ -23,46 +23,71 @@ st.markdown("""
   pointer-events: none;
   overflow: hidden;
 }
-.star {
-  position: absolute;
-  border-radius: 50%;
-}
 </style>
 
-<div id="universe"></div>
+<div id="particles"></div>
 """, unsafe_allow_html=True)
 
 
-# ---------- JS Effect Triggers ----------
+# ---------- EFFECT FUNCTIONS ----------
+
 def trigger_snow():
     st.markdown("""
     <script>
-    const universe = document.getElementById("universe");
-    universe.innerHTML = "";
-    const count = 200;
+    clearParticles();
+
+    const container = document.getElementById("particles");
     const w = window.innerWidth;
     const h = window.innerHeight;
 
+    const count = 120;
+
     for (let i = 0; i < count; i++) {
-        const el = document.createElement("div");
-        el.className = "star";
-        el.style.width = el.style.height = (Math.random()*4+2) + "px";
-        el.style.background = "white";
-        universe.appendChild(el);
+        const flake = document.createElement("div");
+
+        flake.innerText = "❄️";
+        flake.style.position = "absolute";
+        flake.style.fontSize = (Math.random() * 25 + 20) + "px";
+        flake.style.opacity = Math.random() * 0.8 + 0.2;
+        flake.style.pointerEvents = "none";
+
+        const depth = Math.random();
+        if (depth < 0.3) {
+            flake.style.filter = "blur(2px)";
+            flake.style.opacity = 0.4;
+        }
+
+        container.appendChild(flake);
 
         const xStart = Math.random() * w;
-        const duration = 5000 + Math.random()*3000;
+        const drift = (Math.random() - 0.5) * 200;
+        const rotation = Math.random() * 360;
+        const duration = 6000 + Math.random() * 6000;
 
-        el.animate([
-            { transform: `translate3d(${xStart}px, -10px, 0)`, opacity: 0 },
-            { opacity: 0.8, offset: 0.1 },
-            { transform: `translate3d(${xStart}px, ${h+20}px, 0)`, opacity: 0 }
+        flake.animate([
+          {
+            transform: `translate3d(${xStart}px, -50px, 0) rotate(0deg)`,
+            opacity: 0
+          },
+          {
+            opacity: flake.style.opacity,
+            offset: 0.1
+          },
+          {
+            transform: `translate3d(${xStart + drift}px, ${h + 100}px, 0) rotate(${rotation}deg)`,
+            opacity: 0
+          }
         ], {
-            duration: duration,
-            delay: -Math.random()*duration,
-            iterations: Infinity,
-            easing: "linear"
+          duration: duration,
+          delay: -Math.random() * duration,
+          iterations: Infinity,
+          easing: "linear"
         });
+    }
+
+    function clearParticles() {
+        const container = document.getElementById("particles");
+        container.innerHTML = "";
     }
     </script>
     """, unsafe_allow_html=True)
@@ -71,31 +96,41 @@ def trigger_snow():
 def trigger_confetti():
     st.markdown("""
     <script>
-    const universe = document.getElementById("universe");
-    universe.innerHTML = "";
-    const count = 200;
+    const container = document.getElementById("particles");
+    container.innerHTML = "";
+
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const colors = ["#ff3b3b","#3bff57","#3b8bff","#ffd93b"];
+
+    const colors = ["#ff3b3b","#3bff57","#3b8bff","#ffd93b","#ff6ec7"];
+    const count = 250;
 
     for (let i = 0; i < count; i++) {
-        const el = document.createElement("div");
-        el.className = "star";
-        el.style.width = el.style.height = (Math.random()*6+4) + "px";
-        el.style.background = colors[Math.floor(Math.random()*colors.length)];
-        universe.appendChild(el);
+        const piece = document.createElement("div");
+
+        piece.style.position = "absolute";
+        piece.style.width = (Math.random()*8+4) + "px";
+        piece.style.height = (Math.random()*12+6) + "px";
+        piece.style.background = colors[Math.floor(Math.random()*colors.length)];
+        piece.style.opacity = 0.9;
+        piece.style.transform = "rotate(" + (Math.random()*360) + "deg)";
+        piece.style.pointerEvents = "none";
+
+        container.appendChild(piece);
 
         const xStart = Math.random() * w;
-        const duration = 3000 + Math.random()*2000;
+        const drift = (Math.random() - 0.5) * 300;
+        const rotation = Math.random() * 720;
+        const duration = 3000 + Math.random()*3000;
 
-        el.animate([
-            { transform: `translate3d(${xStart}px, -10px, 0)` },
-            { transform: `translate3d(${xStart}px, ${h+20}px, 0)` }
+        piece.animate([
+            { transform: `translate3d(${xStart}px, -20px, 0) rotate(0deg)` },
+            { transform: `translate3d(${xStart + drift}px, ${h+30}px, 0) rotate(${rotation}deg)` }
         ], {
             duration: duration,
             delay: -Math.random()*duration,
             iterations: Infinity,
-            easing: "linear"
+            easing: "cubic-bezier(.37,0,.63,1)"
         });
     }
     </script>
@@ -105,8 +140,8 @@ def trigger_confetti():
 def clear_effects():
     st.markdown("""
     <script>
-    const universe = document.getElementById("universe");
-    universe.innerHTML = "";
+    const container = document.getElementById("particles");
+    container.innerHTML = "";
     </script>
     """, unsafe_allow_html=True)
 
@@ -173,7 +208,6 @@ class GestureProcessor(VideoProcessorBase):
                 elif i.y < pts[5].y and m.y < pts[9].y:
                     this_gesture = "palm"
 
-        # Timer logic
         if this_gesture and this_gesture == self.last:
             if not self.done:
                 diff = time.time() - self.start
@@ -210,7 +244,7 @@ ctx = webrtc_streamer(
     async_processing=True,
 )
 
-# ---------- Main Thread Effect Handling ----------
+# ---------- Trigger Handling ----------
 if ctx.video_processor:
     processor = ctx.video_processor
     if processor.trigger:
