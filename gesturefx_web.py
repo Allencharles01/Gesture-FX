@@ -3,6 +3,7 @@ import cv2
 import mediapipe as mp
 import time
 import av
+import random
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
 st.set_page_config(layout="centered", page_title="Gesture FX")
@@ -11,158 +12,6 @@ st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
-# ---------- Background Layer ----------
-st.markdown("""
-<style>
-#particles {
-  position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 9999;
-  pointer-events: none;
-  overflow: hidden;
-}
-</style>
-
-<div id="particles"></div>
-""", unsafe_allow_html=True)
-
-
-# ---------- EFFECT FUNCTIONS ----------
-
-def trigger_snow():
-    st.markdown("""
-    <script>
-    clearParticles();
-
-    const container = document.getElementById("particles");
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    const count = 120;
-
-    for (let i = 0; i < count; i++) {
-        const flake = document.createElement("div");
-
-        flake.innerText = "❄️";
-        flake.style.position = "absolute";
-        flake.style.fontSize = (Math.random() * 25 + 20) + "px";
-        flake.style.opacity = Math.random() * 0.8 + 0.2;
-        flake.style.pointerEvents = "none";
-
-        const depth = Math.random();
-        if (depth < 0.3) {
-            flake.style.filter = "blur(2px)";
-            flake.style.opacity = 0.4;
-        }
-
-        container.appendChild(flake);
-
-        const xStart = Math.random() * w;
-        const drift = (Math.random() - 0.5) * 200;
-        const rotation = Math.random() * 360;
-        const duration = 6000 + Math.random() * 6000;
-
-        flake.animate([
-          {
-            transform: `translate3d(${xStart}px, -50px, 0) rotate(0deg)`,
-            opacity: 0
-          },
-          {
-            opacity: flake.style.opacity,
-            offset: 0.1
-          },
-          {
-            transform: `translate3d(${xStart + drift}px, ${h + 100}px, 0) rotate(${rotation}deg)`,
-            opacity: 0
-          }
-        ], {
-          duration: duration,
-          delay: -Math.random() * duration,
-          iterations: Infinity,
-          easing: "linear"
-        });
-    }
-
-    function clearParticles() {
-        const container = document.getElementById("particles");
-        container.innerHTML = "";
-    }
-    </script>
-    """, unsafe_allow_html=True)
-
-
-def trigger_confetti():
-    st.markdown("""
-    <script>
-    const container = document.getElementById("particles");
-    container.innerHTML = "";
-
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    const colors = ["#ff3b3b","#3bff57","#3b8bff","#ffd93b","#ff6ec7"];
-    const count = 250;
-
-    for (let i = 0; i < count; i++) {
-        const piece = document.createElement("div");
-
-        piece.style.position = "absolute";
-        piece.style.width = (Math.random()*8+4) + "px";
-        piece.style.height = (Math.random()*12+6) + "px";
-        piece.style.background = colors[Math.floor(Math.random()*colors.length)];
-        piece.style.opacity = 0.9;
-        piece.style.transform = "rotate(" + (Math.random()*360) + "deg)";
-        piece.style.pointerEvents = "none";
-
-        container.appendChild(piece);
-
-        const xStart = Math.random() * w;
-        const drift = (Math.random() - 0.5) * 300;
-        const rotation = Math.random() * 720;
-        const duration = 3000 + Math.random()*3000;
-
-        piece.animate([
-            { transform: `translate3d(${xStart}px, -20px, 0) rotate(0deg)` },
-            { transform: `translate3d(${xStart + drift}px, ${h+30}px, 0) rotate(${rotation}deg)` }
-        ], {
-            duration: duration,
-            delay: -Math.random()*duration,
-            iterations: Infinity,
-            easing: "cubic-bezier(.37,0,.63,1)"
-        });
-    }
-    </script>
-    """, unsafe_allow_html=True)
-
-
-def clear_effects():
-    st.markdown("""
-    <script>
-    const container = document.getElementById("particles");
-    container.innerHTML = "";
-    </script>
-    """, unsafe_allow_html=True)
-
-
-def apply_dark():
-    st.markdown("""
-    <style>
-    body { background-color: #111 !important; color: white !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-def apply_light():
-    st.markdown("""
-    <style>
-    body { background-color: white !important; color: black !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-# ---------- MediaPipe Setup ----------
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
@@ -174,19 +23,87 @@ class GestureProcessor(VideoProcessorBase):
             max_num_hands=1,
             model_complexity=0,
         )
+
         self.last = None
         self.start = 0
         self.done = False
-        self.trigger = None
+        self.active_effect = None
+
+        self.snowflakes = []
+        self.confetti = []
+
+    def create_snow(self, width, height):
+        self.snowflakes = []
+        for _ in range(120):
+            self.snowflakes.append({
+                "x": random.randint(0, width),
+                "y": random.randint(-height, 0),
+                "speed": random.uniform(1, 3),
+                "size": random.uniform(0.5, 1.5),
+                "drift": random.uniform(-1, 1)
+            })
+
+    def create_confetti(self, width, height):
+        self.confetti = []
+        colors = [(255,0,0),(0,255,0),(0,0,255),(0,255,255),(255,0,255)]
+        for _ in range(150):
+            self.confetti.append({
+                "x": random.randint(0, width),
+                "y": random.randint(-height, 0),
+                "speed": random.uniform(3,6),
+                "color": random.choice(colors),
+                "angle": random.randint(0,360)
+            })
+
+    def draw_snow(self, img):
+        h, w, _ = img.shape
+        for flake in self.snowflakes:
+            flake["y"] += flake["speed"]
+            flake["x"] += flake["drift"]
+
+            if flake["y"] > h:
+                flake["y"] = random.randint(-50, 0)
+                flake["x"] = random.randint(0, w)
+
+            cv2.putText(
+                img,
+                "❄",
+                (int(flake["x"]), int(flake["y"])),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                flake["size"],
+                (255,255,255),
+                2,
+                cv2.LINE_AA
+            )
+
+    def draw_confetti(self, img):
+        h, w, _ = img.shape
+        for piece in self.confetti:
+            piece["y"] += piece["speed"]
+
+            if piece["y"] > h:
+                piece["y"] = random.randint(-50, 0)
+                piece["x"] = random.randint(0, w)
+
+            cv2.circle(
+                img,
+                (int(piece["x"]), int(piece["y"])),
+                4,
+                piece["color"],
+                -1
+            )
+
+    def apply_dark(self, img):
+        overlay = img.copy()
+        cv2.rectangle(overlay, (0,0), (img.shape[1], img.shape[0]), (0,0,0), -1)
+        cv2.addWeighted(overlay, 0.5, img, 0.5, 0, img)
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         img = cv2.flip(img, 1)
 
         h, w, _ = img.shape
-        results = self.detector.process(
-            cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        )
+        results = self.detector.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
         this_gesture = None
         anchor_pt = None
@@ -197,7 +114,7 @@ class GestureProcessor(VideoProcessorBase):
                 pts = hand.landmark
                 anchor_pt = (int(pts[0].x * w), int(pts[0].y * h))
 
-                t, i, m, r, p = pts[4], pts[8], pts[12], pts[16], pts[20]
+                t, i, m = pts[4], pts[8], pts[12]
 
                 if t.y < i.y and t.y < m.y:
                     this_gesture = "thumb"
@@ -214,52 +131,47 @@ class GestureProcessor(VideoProcessorBase):
 
                 if anchor_pt:
                     progress = min(1.0, diff / HOLD_DELAY)
-                    cv2.circle(img, anchor_pt, 40, (100, 100, 100), 1)
+                    cv2.circle(img, anchor_pt, 40, (100,100,100), 1)
                     cv2.ellipse(
                         img,
                         anchor_pt,
-                        (40, 40),
+                        (40,40),
                         -90,
                         0,
-                        int(progress * 360),
-                        (0, 255, 120),
-                        3,
+                        int(progress*360),
+                        (0,255,120),
+                        3
                     )
 
                 if diff >= HOLD_DELAY:
-                    self.trigger = this_gesture
+                    self.active_effect = this_gesture
                     self.done = True
+
+                    if this_gesture == "peace":
+                        self.create_snow(w, h)
+                    elif this_gesture == "thumb":
+                        self.create_confetti(w, h)
+
         else:
             self.last = this_gesture
             self.start = time.time()
             self.done = False
 
+        if self.active_effect == "peace":
+            self.draw_snow(img)
+        elif self.active_effect == "thumb":
+            self.draw_confetti(img)
+        elif self.active_effect == "fist":
+            self.apply_dark(img)
+        elif self.active_effect == "palm":
+            self.active_effect = None
+
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-ctx = webrtc_streamer(
+webrtc_streamer(
     key="gesturefx",
     video_processor_factory=GestureProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
-
-# ---------- Trigger Handling ----------
-if ctx.video_processor:
-    processor = ctx.video_processor
-    if processor.trigger:
-
-        if processor.trigger == "thumb":
-            trigger_confetti()
-
-        elif processor.trigger == "peace":
-            trigger_snow()
-
-        elif processor.trigger == "fist":
-            apply_dark()
-
-        elif processor.trigger == "palm":
-            apply_light()
-            clear_effects()
-
-        processor.trigger = None
