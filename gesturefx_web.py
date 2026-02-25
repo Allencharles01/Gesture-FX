@@ -3,15 +3,131 @@ import cv2
 import mediapipe as mp
 import time
 import av
-import random
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 
-st.set_page_config(layout="centered", page_title="Gesture FX Web")
-st.title("🖐️ Hand Triggered Effects")
+st.set_page_config(layout="centered", page_title="Gesture FX")
+st.title("🖐️ Gesture FX")
 st.caption("Developed by Allen Charles | allencharles.dev")
 
 HOLD_DELAY = 2.0
 
+# ---------- Background Animation Layer ----------
+st.markdown("""
+<style>
+#universe {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+.star {
+  position: absolute;
+  border-radius: 50%;
+}
+</style>
+
+<div id="universe"></div>
+""", unsafe_allow_html=True)
+
+
+# ---------- JS Effect Triggers ----------
+def trigger_snow():
+    st.markdown("""
+    <script>
+    const universe = document.getElementById("universe");
+    universe.innerHTML = "";
+    const count = 200;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    for (let i = 0; i < count; i++) {
+        const el = document.createElement("div");
+        el.className = "star";
+        el.style.width = el.style.height = (Math.random()*4+2) + "px";
+        el.style.background = "white";
+        universe.appendChild(el);
+
+        const xStart = Math.random() * w;
+        const duration = 5000 + Math.random()*3000;
+
+        el.animate([
+            { transform: `translate3d(${xStart}px, -10px, 0)`, opacity: 0 },
+            { opacity: 0.8, offset: 0.1 },
+            { transform: `translate3d(${xStart}px, ${h+20}px, 0)`, opacity: 0 }
+        ], {
+            duration: duration,
+            delay: -Math.random()*duration,
+            iterations: Infinity,
+            easing: "linear"
+        });
+    }
+    </script>
+    """, unsafe_allow_html=True)
+
+
+def trigger_confetti():
+    st.markdown("""
+    <script>
+    const universe = document.getElementById("universe");
+    universe.innerHTML = "";
+    const count = 200;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const colors = ["#ff3b3b","#3bff57","#3b8bff","#ffd93b"];
+
+    for (let i = 0; i < count; i++) {
+        const el = document.createElement("div");
+        el.className = "star";
+        el.style.width = el.style.height = (Math.random()*6+4) + "px";
+        el.style.background = colors[Math.floor(Math.random()*colors.length)];
+        universe.appendChild(el);
+
+        const xStart = Math.random() * w;
+        const duration = 3000 + Math.random()*2000;
+
+        el.animate([
+            { transform: `translate3d(${xStart}px, -10px, 0)` },
+            { transform: `translate3d(${xStart}px, ${h+20}px, 0)` }
+        ], {
+            duration: duration,
+            delay: -Math.random()*duration,
+            iterations: Infinity,
+            easing: "linear"
+        });
+    }
+    </script>
+    """, unsafe_allow_html=True)
+
+
+def clear_effects():
+    st.markdown("""
+    <script>
+    const universe = document.getElementById("universe");
+    universe.innerHTML = "";
+    </script>
+    """, unsafe_allow_html=True)
+
+
+def apply_dark():
+    st.markdown("""
+    <style>
+    body { background-color: #111 !important; color: white !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def apply_light():
+    st.markdown("""
+    <style>
+    body { background-color: white !important; color: black !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ---------- MediaPipe Setup ----------
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
@@ -26,37 +142,7 @@ class GestureProcessor(VideoProcessorBase):
         self.last = None
         self.start = 0
         self.done = False
-        self.active_effect = None
-        self.particles = []
-
-    def create_particles(self, w, h, count=50):
-        self.particles = [
-            [random.randint(0, w), random.randint(-h, 0), random.randint(2, 6)]
-            for _ in range(count)
-        ]
-
-    def draw_snow(self, img):
-        h, w, _ = img.shape
-        for p in self.particles:
-            cv2.circle(img, (p[0], p[1]), p[2], (255, 255, 255), -1)
-            p[1] += 3
-            if p[1] > h:
-                p[1] = random.randint(-20, 0)
-
-    def draw_confetti(self, img):
-        h, w, _ = img.shape
-        colors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0)]
-        for p in self.particles:
-            cv2.circle(img, (p[0], p[1]), p[2], random.choice(colors), -1)
-            p[1] += 5
-            if p[1] > h:
-                p[1] = random.randint(-20, 0)
-
-    def apply_dark_filter(self, img):
-        overlay = img.copy()
-        cv2.rectangle(overlay, (0,0), (img.shape[1], img.shape[0]), (0,0,0), -1)
-        alpha = 0.5
-        cv2.addWeighted(overlay, alpha, img, 1-alpha, 0, img)
+        self.trigger = None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -107,30 +193,39 @@ class GestureProcessor(VideoProcessorBase):
                     )
 
                 if diff >= HOLD_DELAY:
-                    self.active_effect = this_gesture
+                    self.trigger = this_gesture
                     self.done = True
-                    self.create_particles(w, h)
         else:
             self.last = this_gesture
             self.start = time.time()
             self.done = False
 
-        # Apply active effect
-        if self.active_effect == "peace":
-            self.draw_snow(img)
-        elif self.active_effect == "thumb":
-            self.draw_confetti(img)
-        elif self.active_effect == "fist":
-            self.apply_dark_filter(img)
-        elif self.active_effect == "palm":
-            self.active_effect = None
-
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 
-webrtc_streamer(
+ctx = webrtc_streamer(
     key="gesturefx",
     video_processor_factory=GestureProcessor,
     media_stream_constraints={"video": True, "audio": False},
     async_processing=True,
 )
+
+# ---------- Main Thread Effect Handling ----------
+if ctx.video_processor:
+    processor = ctx.video_processor
+    if processor.trigger:
+
+        if processor.trigger == "thumb":
+            trigger_confetti()
+
+        elif processor.trigger == "peace":
+            trigger_snow()
+
+        elif processor.trigger == "fist":
+            apply_dark()
+
+        elif processor.trigger == "palm":
+            apply_light()
+            clear_effects()
+
+        processor.trigger = None
